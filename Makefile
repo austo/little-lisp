@@ -1,7 +1,7 @@
 CC = gcc
 
-prompt:
-	$(CC) -std=c99 -Wall prompt.c -ledit -o out/prompt
+repl:
+	$(CC) -std=c99 -Wall repl.c -ledit -o out/repl
 
 clean:
 	rm out/*
