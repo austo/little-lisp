@@ -21,6 +21,9 @@ void add_history(char *unused) {}
 
 #else
 #include <editline/readline.h>
+#ifdef __linux__
+#include <editline/history.h>
+#endif
 #endif
 
 int main(int argc, char** argv) {
