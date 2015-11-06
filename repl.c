@@ -71,7 +71,7 @@ void lval_print(lval v) {
 			printf("%li", v.val.num);
 			return;
 		case LVAL_FNUM:
-			printf("%lf\n", v.val.fnum);
+			printf("%lf", v.val.fnum);
 			return;
 		case LVAL_ERR:
 			switch(v.val.err) {
