@@ -46,13 +46,22 @@ enum { LVAL_ERR, LVAL_NUM, LVAL_FNUM, LVAL_SYM, LVAL_SEXPR };
 
 #define LVAL_NUMBER_VALUE(x) ((*x).type == LVAL_FNUM ? (*x).val.fnum : (*x).val.num)
 
+// TODO: move to header file
+
 lval* lval_read_num(mpc_ast_t*);
 lval* lval_read(mpc_ast_t*);
 lval* lval_add(lval*, lval*);
+lval* lval_eval_sexpr(lval*);
+lval* lval_eval(lval*);
+lval* lval_pop(lval*, int);
+lval* lval_take(lval*, int);
+lval* builtin_op(lval*, char*);
+
 void lval_del(lval*);
 void lval_expr_print(lval*, char, char);
 void lval_print(lval*);
 void lval_println(lval*);
+
 
 lval* lval_err(char *s) {
 	lval *v = malloc(sizeof(*v));
@@ -184,62 +193,140 @@ void lval_print(lval *v) {
 
 void lval_println(lval *v) { lval_print(v); putchar('\n'); }
 
-// lval eval_op(lval x, char *op, lval y) {
-// 	if (x->type == LVAL_ERR) { return x; }
-// 	if (y->type == LVAL_ERR) { return y; }
+lval *lval_eval_sexpr(lval *v) {
+	for (int i = 0; i < v->count; i++) {
+		v->cells[i] = lval_eval(v->cells[i]);
+	}
 
-// 	if (x->type == LVAL_FNUM || y->type == LVAL_FNUM) {
-// 		if (strcmp(op, "+") == 0) {
-// 			return lval_fnum(LVAL_NUMBER_VALUE(x) + LVAL_NUMBER_VALUE(y));
-// 		}
-// 		if (strcmp(op, "-") == 0) {
-// 			return lval_fnum(LVAL_NUMBER_VALUE(x) - LVAL_NUMBER_VALUE(y));
-// 		}
-// 		if (strcmp(op, "*") == 0) {
-// 			return lval_fnum(LVAL_NUMBER_VALUE(x) * LVAL_NUMBER_VALUE(y));
-// 		}
-// 		if (strcmp(op, "%") == 0) {
-// 			return lval_err(LERR_BAD_OP);
-// 		}
-// 		if (strcmp(op, "/") == 0) { 
-// 			return LVAL_NUMBER_VALUE(y) == 0 ? lval_err(LERR_DIV_ZERO) : lval_fnum(LVAL_NUMBER_VALUE(x) / LVAL_NUMBER_VALUE(y));
-// 		}
-// 	}
+	// check errors
+	for(int i = 0; i < v->count; i++) {
+		if (v->cells[i]->type == LVAL_ERR) { return lval_take(v, 0); }
+	}
 
-// 	if (strcmp(op, "+") == 0) { return lval_num(x->val.num + y->val.num); }
-// 	if (strcmp(op, "-") == 0) { return lval_num(x->val.num - y->val.num); }
-// 	if (strcmp(op, "*") == 0) { return lval_num(x->val.num * y->val.num); }
-// 	if (strcmp(op, "/") == 0) { 
-// 		return y->val.num == 0 ? lval_err(LERR_DIV_ZERO) : lval_num(x->val.num / y->val.num);
-// 	}
-// 	if (strcmp(op, "%") == 0) { return lval_num(x->val.num % y->val.num); }
-// 	return lval_err(LERR_BAD_OP);
-// }
+	// empty expression
+	if (v->count == 0) { return v; }
 
-// lval eval(mpc_ast_t *t) {
-// 	if (strstr(t->tag, "number")) {
-// 		if (strstr(t->contents, ".")) {
-// 			errno = 0;
-// 			double x = strtod(t->contents, NULL);
-// 			return errno != ERANGE ? lval_fnum(x) : lval_err(LERR_BAD_NUM);
-// 		}
-// 		errno = 0;
-// 		long x = strtol(t->contents, NULL, 10);
-// 		return errno != ERANGE ? lval_num(x) : lval_err(LERR_BAD_NUM);
-// 	}
-	
-// 	char *op = t->children[1]->contents;
+	// single expression
+	if (v->count == 1) { return lval_take(v, 0); }
 
-// 	lval x = eval(t->children[2]);
+	// ensure first element is symbol
+	lval *f = lval_pop(v, 0);
+	if (f->type != LVAL_SYM) {
+		lval_del(f);
+		lval_del(v);
+		return lval_err("S-expression does not start with symbol");
+	}
 
-// 	int i = 3;
-// 	while(strstr(t->children[i]->tag, "expr")) {
-// 		x = eval_op(x, op, eval(t->children[i]));
-// 		i++;
-// 	}
-// 	return x;
-// }
+	// call builtin with operator
+	lval *result = builtin_op(v, f->val.sym);
+	lval_del(f);
+	return result;
+}
 
+lval *lval_eval(lval *v) {
+	// evaluate S-expressions
+	if (v->type == LVAL_SEXPR) { return lval_eval_sexpr(v); }
+	// other types remain the same
+	return v;
+}
+
+lval *lval_pop(lval *v, int i) {
+	lval *x = v->cells[i];
+
+	// shift memory after item at i
+	memmove(&v->cells[i], &v->cells[i + 1], sizeof(lval*) * (v->count-i-1));
+
+	v->count--;
+
+	// reallocate memory
+	v->cells = realloc(v->cells, sizeof(lval*) * v->count);
+	return x;
+}
+
+lval *lval_take(lval *v, int i) {
+	lval *x = lval_pop(v, i);
+	lval_del(v);
+	return x;
+}
+
+lval *builtin_op(lval *a, char *op) {
+	// ensure all operands are numbers
+	for(int i = 0; i < a->count; i++) {
+		if (a->cells[i]->type != LVAL_NUM && a->cells[i]->type != LVAL_FNUM) {
+			lval_del(a);
+			return lval_err("cannot operate on non-number");
+		}
+	}
+
+	lval *x = lval_pop(a, 0);
+
+	// if no arguments and '-', perform unary negation
+	if ((strcmp(op, "-") == 0) && a->count == 0) {
+		if (x->type == LVAL_NUM) {
+			x->val.num = -x->val.num;
+		}
+		if (x->type == LVAL_FNUM) {
+			x->val.fnum = -x->val.fnum;
+		}
+	}
+
+	while(a->count > 0) {
+		lval *y = lval_pop(a, 0);
+
+		if (x->type == LVAL_FNUM || y->type == LVAL_FNUM) {
+			if (x->type == LVAL_NUM) {
+				lval *tmp = lval_fnum((double) x->val.num);
+				tmp->cells = x->cells;
+				tmp->count = x->count;
+				lval_del(x);
+				x = tmp;
+			}
+			if (strcmp(op, "+") == 0) {
+				x->val.fnum = (x->val.fnum + LVAL_NUMBER_VALUE(y));
+			}
+			if (strcmp(op, "-") == 0) {
+				x->val.fnum = (x->val.fnum - LVAL_NUMBER_VALUE(y));
+			}
+			if (strcmp(op, "*") == 0) {
+				x->val.fnum = (x->val.fnum * LVAL_NUMBER_VALUE(y));
+			}
+			if (strcmp(op, "/") == 0) {
+				if (((int)(LVAL_NUMBER_VALUE(y))) == 0) {
+					lval_del(x);
+					lval_del(y);
+					x = lval_err("division by zero");
+					break;
+				}
+				x->val.fnum /= LVAL_NUMBER_VALUE(y);
+			}
+			if (strcmp(op, "%") == 0) {
+				lval_del(x);
+				lval_del(y);
+				x = lval_err("bad floating point operation");
+				break;
+			}
+		} else {
+			if (strcmp(op, "+") == 0) { x->val.num += y->val.num; }
+			if (strcmp(op, "-") == 0) { x->val.num -= y->val.num; }
+			if (strcmp(op, "*") == 0) { x->val.num *= y->val.num; }
+			if (strcmp(op, "/") == 0) { 
+				if (y->val.num == 0) {
+					lval_del(x);
+					lval_del(y);
+					x = lval_err("division by zero");
+					break;
+				}
+				x->val.num /= y->val.num;
+			}
+			if (strcmp(op, "%") == 0) { x->val.num %= y->val.num; }
+		}
+		
+		lval_del(y);
+	}
+
+	lval_del(a);
+	return x;
+}
 
 
 int main(int argc, char** argv) {
@@ -268,10 +355,8 @@ int main(int argc, char** argv) {
 
 		mpc_result_t r;
 		if(mpc_parse("<stdin>", input, Lispy, &r)) {
-			// lval result = eval(r.output);
-			// lval_println(result);
 
-			lval *x = lval_read(r.output);
+			lval *x = lval_eval(lval_read(r.output));
 			lval_println(x);
 			lval_del(x);
 
@@ -281,7 +366,6 @@ int main(int argc, char** argv) {
 			mpc_err_delete(r.error);
 		}
 
-		// printf("No, you're a %s\n", input);
 		free(input);
  }
 
