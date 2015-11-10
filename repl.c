@@ -28,21 +28,36 @@ void add_history(char *unused) {}
 #endif
 #endif
 
+struct lval;
+struct lenv;
+typedef struct lval lval;
+typedef struct lenv lenv;
+
+enum { LVAL_ERR, LVAL_NUM, LVAL_FNUM, LVAL_SYM,
+	LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR };
+
+typedef lval *(*lbuiltin)(lenv *, lval *);
+
 typedef union {
 	long num;
 	double fnum;
 	char *sym;
+	lbuiltin fun;
 	char *err;
 } nval;
 
-typedef struct lval {
+struct lval {
 	int type;
 	nval val;
 	int count;
 	struct lval **cells;
-} lval;
+};
 
-enum { LVAL_ERR, LVAL_NUM, LVAL_FNUM, LVAL_SYM, LVAL_SEXPR, LVAL_QEXPR };
+struct lenv {
+	int count;
+	char **syms;
+	lval **vals;
+};
 
 #define LVAL_NUMBER_VALUE(x) ((*x).type == LVAL_FNUM ? (*x).val.fnum : (*x).val.num)
 #define LASSERT(args, cond, err) \
@@ -58,6 +73,8 @@ lval *lval_eval(lval *);
 lval *lval_pop(lval *, int);
 lval *lval_take(lval *, int);
 lval *lval_join(lval *, lval *);
+lval *lval_copy(lval *);
+
 lval *builtin(lval *, char *);
 lval *builtin_head(lval *);
 lval *builtin_tail(lval *);
@@ -71,6 +88,28 @@ void lval_expr_print(lval *, char, char);
 void lval_print(lval *);
 void lval_println(lval *);
 
+lval *lenv_get(lenv *, lval *);
+void lenv_put(lenv *, lval *, lval *);
+
+lenv *
+lenv_new(void) {
+	lenv *e = malloc(sizeof(*e));
+	e->count = 0;
+	e->syms = NULL;
+	e->vals = NULL;
+	return e;
+}
+
+void
+lenv_del(lenv *e) {
+	for (int i = 0; i < e->count; i++) {
+		free(e->syms[i]);
+		lval_del(e->vals[i]);
+	}
+	free(e->syms);
+	free(e->vals);
+	free(e);
+}
 
 lval *
 lval_err(char *s) {
@@ -133,11 +172,20 @@ lval_qexpr(void) {
 	return v;
 }
 
+lval *
+lval_fun(lbuiltin fun) {
+	lval *v = malloc(sizeof(*v));
+	v->type = LVAL_FUN;
+	v->val.fun = fun;
+	return v;
+}
+
 void
 lval_del(lval *v) {
 	switch(v->type) {
 		case LVAL_NUM:
 		case LVAL_FNUM:
+		case LVAL_FUN:
 			break;
 		case LVAL_ERR:
 			free(v->val.err);
@@ -218,6 +266,9 @@ lval_print(lval *v) {
 			return;
 		case LVAL_FNUM:
 			printf("%lf", v->val.fnum);
+			return;
+		case LVAL_FUN:
+			printf("<function>");
 			return;
 		case LVAL_ERR:
 			printf("Error: %s", v->val.err);
@@ -392,6 +443,43 @@ lval_join(lval *x, lval *y) {
 
 	// delete empty 'y' and return 'x'
 	lval_del(y);
+	return x;
+}
+
+lval *
+lval_copy(lval *v) {
+	lval *x = malloc(sizeof(*x));
+	x->type = v->type;
+	x->count = 0;
+	x->cells = NULL;
+
+	switch(v->type) {
+		case LVAL_NUM:
+			x->val.num = v->val.num;
+			break;
+		case LVAL_FNUM:
+			x->val.fnum = v->val.fnum;
+			break;
+		case LVAL_FUN:
+			x->val.fun = v->val.fun;
+			break;
+		case LVAL_SYM:
+			x->val.sym = malloc(strlen(v->val.sym) + 1);
+			strcpy(x->val.sym, v->val.sym);
+			break;
+		case LVAL_ERR:
+			x->val.err = malloc(strlen(v->val.err) + 1);
+			strcpy(x->val.err, v->val.err);
+			break;
+		case LVAL_SEXPR:
+		case LVAL_QEXPR:
+			x->count = v->count;
+			x->cells = malloc(sizeof(lval *) * x->count);
+			for (int i = 0; i < x->count; i++) {
+				x->cells[i] = lval_copy(v->cells[i]);
+			}
+			break;
+	}
 	return x;
 }
 
