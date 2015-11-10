@@ -13,6 +13,10 @@ repl: mpc $(OBJDIR)
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
+# Miscellaneous .c files
+%: %.c $(OBJDIR)
+	$(CC) $(CFLAGS) $< -o $(OBJDIR)/$@
+
 clean:
 	rm -f $(OBJDIR)/*
 	rm -f *.o

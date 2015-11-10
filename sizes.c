@@ -11,6 +11,7 @@ int main(int argc, char **argv) {
 	printf("sizeof(long): %ld\n", sizeof(long));
 	printf("sizeof(double): %ld\n", sizeof(double));
 	printf("sizeof(char *): %ld\n", sizeof(char *));
+	printf("sizeof(int(*)(void *, void *): %ld\n", sizeof(int(*)(void *, void *)));
 
 	holder h;
 	h.type = 1;
