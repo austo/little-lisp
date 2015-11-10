@@ -18,6 +18,7 @@ int main(int argc, char **argv) {
 	h.data = (void *) 42;
 
 	printf("h.data: %d\n", (int)h.data);
+	printf("BUFSIZ: %d\n", BUFSIZ);
 
 	return 0;
 }
