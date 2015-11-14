@@ -7,8 +7,8 @@ OBJDIR := out
 mpc:
 	$(CC) -c $(CFLAGS) $(MPC_DIR)/mpc.c
 
-repl: mpc $(OBJDIR)
-	$(CC) $(CFLAGS) -I$(DEPS) repl.c mpc.o -ledit -lm -o $(OBJDIR)/repl
+lispy: mpc $(OBJDIR)
+	$(CC) $(CFLAGS) -I$(DEPS) lispy.c mpc.o -ledit -lm -o $(OBJDIR)/lispy
 
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
