@@ -73,7 +73,7 @@ struct lenv {
 		func, index, ltype_name(args->cells[index]->type), ltype_name(expect))
 
 #define LASSERT_NUM_TYPE(func, args, index) \
-	LASSERT(args, ((args->cells[index]->type == LVAL_NUM) || (args->cells[i]->type == LVAL_FNUM)), \
+	LASSERT(args, ((args->cells[index]->type == LVAL_NUM) || (args->cells[index]->type == LVAL_FNUM)), \
 		"function '%s' passed incorrect type for argument %i. Got %s, expected Number.", \
 		func, index, ltype_name(args->cells[index]->type))
 
@@ -678,6 +678,26 @@ builtin_mod(lenv *e, lval *a) {
 }
 
 lval *
+builtin_gt(lenv *e, lval *a) {
+	return builtin_ord(e, a, ">");
+}
+
+lval *
+builtin_lt(lenv *e, lval *a) {
+	return builtin_ord(e, a, "<");
+}
+
+lval *
+builtin_ge(lenv *e, lval *a) {
+	return builtin_ord(e, a, ">=");
+}
+
+lval *
+builtin_le(lenv *e, lval *a) {
+	return builtin_ord(e, a, "<=");
+}
+
+lval *
 builtin_put(lenv *e, lval *a) {
 	return builtin_var(e, a, "=");
 }
@@ -858,7 +878,62 @@ builtin_op(lenv *e, lval *a, char *op) {
 	return x;
 }
 
-lval *builtin_var(lenv *e, lval *a, char *func) {
+lval *
+builtin_ord(lenv *e, lval *a, char *op) {
+	LASSERT_NUM(op, a, 2);
+	LASSERT_NUM_TYPE(op, a, 0);
+	LASSERT_NUM_TYPE(op, a, 1);
+
+	lval *first = a->cells[0];
+	lval *second = a->cells[1];
+	int r;
+
+	if (first->type == LVAL_FNUM || second->type == LVAL_FNUM) {
+		double firstVal, secondVal;
+		if (first->type == LVAL_NUM) {
+			firstVal = (double) first->val.num;
+		} else {
+			firstVal = first->val.fnum;
+		}
+		if (second->type == LVAL_NUM) {
+			secondVal = (double) second->val.num;
+		} else {
+			secondVal = second->val.fnum;
+		}
+		if (strcmp(op, ">")  == 0) {
+			r = (firstVal > secondVal);
+	  }
+		if (strcmp(op, "<")  == 0) {
+			r = (firstVal < secondVal);
+		}
+		if (strcmp(op, ">=") == 0) {
+			r = (firstVal >= secondVal);
+		}
+		if (strcmp(op, "<=") == 0) {
+			r = (firstVal <= secondVal);
+		}
+	} else {
+		int firstVal = first->val.num, secondVal = second->val.num;
+		if (strcmp(op, ">")  == 0) {
+			r = (firstVal > secondVal);
+	  }
+		if (strcmp(op, "<")  == 0) {
+			r = (firstVal < secondVal);
+		}
+		if (strcmp(op, ">=") == 0) {
+			r = (firstVal >= secondVal);
+		}
+		if (strcmp(op, "<=") == 0) {
+			r = (firstVal <= secondVal);
+		}
+	}
+
+	lval_del(a);
+	return lval_num(r);
+}
+
+lval *
+builtin_var(lenv *e, lval *a, char *func) {
 	LASSERT_TYPE(func, a, 0, LVAL_QEXPR);
 
 	// first arg is symbol list
