@@ -801,6 +801,47 @@ lval_join(lval *x, lval *y) {
 	return x;
 }
 
+int lval_eq(lval *x, lval *y) {
+	// different types never equal
+	if (x->type != y->type) {
+		return 0;
+	}
+
+	switch(x->type) {
+		// number values
+		case LVAL_NUM:
+			return (x->val.num == y->val.num);
+		case LVAL_FNUM:
+			return (x->val.fnum == y->val.fnum);
+		// string values
+		case LVAL_ERR:
+			return (strcmp(x->val.err, y->val.err) == 0);
+		case LVAL_SYM:
+			return (strcmp(x->val.sym, y->val.sym) == 0);
+		// if builtin, compare function references
+		case LVAL_FUN:
+			return (x->val.builtin == y->val.builtin);
+		// compare formals and body
+		case LVAL_LAMBDA:
+			return lval_eq(x->val.context->formals, y->val.context->formals) &&
+				lval_eq(x->val.context->body, y->val.context->body);
+		// if list, compare every element
+		case LVAL_QEXPR:
+		case LVAL_SEXPR:
+			if (x->count != y->count) {
+				return 0;
+			}
+			for(int i = 0; i < x->count; i++) {
+				if (!lval_eq(x->cells[i], y->cells[i])) {
+					return 0;
+				}
+			}
+			return 1;
+		break;
+	}
+	return 0;
+}
+
 lval *
 builtin_op(lenv *e, lval *a, char *op) {
 	// ensure all operands are numbers
