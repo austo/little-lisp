@@ -10,6 +10,7 @@ typedef struct lcontext lcontext;
 typedef lval *(*lbuiltin)(lenv *, lval *);
 
 lval *lval_read_num(mpc_ast_t *);
+lval *lval_read_str(mpc_ast_t *);
 lval *lval_read(mpc_ast_t *);
 lval *lval_add(lval*, lval *);
 lval *lval_eval_sexpr(lenv *, lval *);
@@ -52,6 +53,7 @@ void lval_del(lval *);
 void lval_expr_print(lval *, char, char);
 void lval_print(lval *);
 void lval_println(lval *);
+void lval_print_str(lval *);
 
 char *ltype_name(int);
 

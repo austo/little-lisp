@@ -29,7 +29,7 @@ void add_history(char *unused) {}
 #endif
 #endif
 
-enum { LVAL_ERR, LVAL_NUM, LVAL_FNUM, LVAL_SYM,
+enum { LVAL_ERR, LVAL_NUM, LVAL_FNUM, LVAL_SYM, LVAL_STR,
 	LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR, LVAL_LAMBDA };
 
 
@@ -43,6 +43,7 @@ typedef union {
 	long num;
 	double fnum;
 	char *sym;
+	char *str;
 	char *err;
 	lbuiltin builtin;
 	lcontext *context;
@@ -160,6 +161,16 @@ lval_sym(char *s) {
 	return v;
 }
 
+lval *lval_str(char *s) {
+	lval *v = malloc(sizeof(*v));
+	v->type = LVAL_STR;
+	v->val.str = malloc(strlen(s) + 1);
+	strcpy(v->val.str, s);
+	v->count = 0;
+	v->cells = NULL;
+	return v;
+}
+
 lval *
 lval_sexpr(void) {
 	lval *v = malloc(sizeof(*v));
@@ -256,6 +267,9 @@ lval_del(lval *v) {
 		case LVAL_SYM:
 			free(v->val.sym);
 			break;
+		case LVAL_STR:
+			free(v->val.str);
+			break;
 		case LVAL_QEXPR:
 		case LVAL_SEXPR:
 			for(int i = 0; i < v->count; i++) {
@@ -280,9 +294,26 @@ lval_read_num(mpc_ast_t *t) {
 }
 
 lval *
+lval_read_str(mpc_ast_t *t) {
+	// cut off final quote character
+	t->contents[strlen(t->contents) - 1] = '\0';
+	// copy the string while removing first quote character
+	char *unescaped = malloc(strlen(t->contents + 1) + 1);
+	strcpy(unescaped, t->contents + 1);
+	// pass through unescape function
+	unescaped = mpcf_unescape(unescaped);
+	// construct new lval using the string
+	lval *str = lval_str(unescaped);
+	// free string and return
+	free(unescaped);
+	return str;
+}
+
+lval *
 lval_read(mpc_ast_t *t) {
 	if (strstr(t->tag, "number")) { return lval_read_num(t); }
 	if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
+	if (strstr(t->tag, "string")) { return lval_read_str(t); }
 
 	lval *x = NULL;
 	if (strcmp(t->tag, ">") == 0) { x = lval_sexpr(); }
@@ -345,6 +376,9 @@ lval_print(lval *v) {
 		case LVAL_SYM:
 			printf("%s", v->val.sym);
 			return;
+		case LVAL_STR:
+			lval_print_str(v);
+			return;
 		case LVAL_SEXPR:
 			lval_expr_print(v, '(', ')');
 			return;
@@ -380,6 +414,9 @@ lval_copy(lval *v) {
 			x->val.sym = malloc(strlen(v->val.sym) + 1);
 			strcpy(x->val.sym, v->val.sym);
 			break;
+		case LVAL_STR:
+			x->val.str = malloc(strlen(v->val.str) + 1);
+			strcpy(x->val.str, v->val.str);
 		case LVAL_ERR:
 			x->val.err = malloc(strlen(v->val.err) + 1);
 			strcpy(x->val.err, v->val.err);
@@ -399,6 +436,19 @@ lval_copy(lval *v) {
 void
 lval_println(lval *v) { lval_print(v); putchar('\n'); }
 
+void
+lval_print_str(lval *v) {
+	// make a copy of the string
+	char *escaped = malloc(strlen(v->val.str) + 1);
+	strcpy(escaped, v->val.str);
+	// pass through escape function
+	escaped = mpcf_escape(escaped);
+	// print between quotes
+	printf("\"%s\"", escaped);
+	// free copied string
+	free(escaped);
+}
+
 char *
 ltype_name(int t) {
 	switch (t) {
@@ -411,6 +461,8 @@ ltype_name(int t) {
 			return "Error";
 		case LVAL_SYM:
 			return "Symbol";
+		case LVAL_STR:
+			return "String";
 		case LVAL_SEXPR:
 			return "S-Expression";
 		case LVAL_QEXPR:
@@ -827,6 +879,8 @@ lval_eq(lval *x, lval *y) {
 			return (strcmp(x->val.err, y->val.err) == 0);
 		case LVAL_SYM:
 			return (strcmp(x->val.sym, y->val.sym) == 0);
+		case LVAL_STR:
+			return (strcmp(x->val.str, y->val.str) == 0);
 		// if builtin, compare function references
 		case LVAL_FUN:
 			return (x->val.builtin == y->val.builtin);
@@ -1078,6 +1132,7 @@ int
 main(int argc, char** argv) {
 	mpc_parser_t *Number = mpc_new("number");
 	mpc_parser_t *Symbol = mpc_new("symbol");
+	mpc_parser_t *String = mpc_new("string");
 	mpc_parser_t *Sexpr = mpc_new("sexpr");
 	mpc_parser_t *Qexpr = mpc_new("qexpr");
 	mpc_parser_t *Expr = mpc_new("expr");
@@ -1087,6 +1142,7 @@ main(int argc, char** argv) {
 		"                                                    \
 			number : /-?[0-9]+(\\.[0-9]+)?/ ;                  \
 			symbol : /[a-zA-Z0-9_+\\-*\\/%\\\\=<>!&]+/ ;       \
+			string : /\"(\\\\.|[^\"])*\"/ ;                    \
 			sexpr  : '(' <expr>* ')' ;                         \
 			qexpr  : '{' <expr>* '}' ;                         \
 			expr   : <number> | <symbol> | <sexpr> | <qexpr>;  \
@@ -1122,6 +1178,6 @@ main(int argc, char** argv) {
 
  lenv_del(e);
 
- mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
+ mpc_cleanup(7, Number, Symbol, String, Sexpr, Qexpr, Expr, Lispy);
  return 0;
 }
