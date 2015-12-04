@@ -28,6 +28,8 @@ lval *builtin_gt(lenv *, lval *);
 lval *builtin_lt(lenv *, lval *);
 lval *builtin_ge(lenv *, lval *);
 lval *builtin_le(lenv *, lval *);
+lval *builtin_eq(lenv *, lval *);
+lval *builtin_ne(lenv *, lval *);
 
 lval *builtin_if(lenv *, lval *);
 
