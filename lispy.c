@@ -4,6 +4,15 @@
 #include "mpc/mpc.h"
 #include "lispy.h"
 
+mpc_parser_t *Number;
+mpc_parser_t *Symbol;
+mpc_parser_t *String;
+mpc_parser_t *Comment;
+mpc_parser_t *Sexpr;
+mpc_parser_t *Qexpr;
+mpc_parser_t *Expr;
+mpc_parser_t *Lispy;
+
 #ifdef _WIN32
 #include <string.h>
 
@@ -326,6 +335,7 @@ lval_read(mpc_ast_t *t) {
 		if (strcmp(t->children[i]->contents, "{") == 0) { continue; }
 		if (strcmp(t->children[i]->contents, "}") == 0) { continue; }
 		if (strcmp(t->children[i]->tag, "regex") == 0) { continue; }
+		if (strstr(t->children[i]->tag, "comment")) { continue; }
 		x = lval_add(x, lval_read(t->children[i]));
 	}
 	return x;
@@ -861,6 +871,43 @@ lval_join(lval *x, lval *y) {
 	return x;
 }
 
+lval *
+builtin_load(lenv *e, lval *a) {
+	LASSERT_NUM("load", a, 1);
+	LASSERT_TYPE("load", a, 0, LVAL_STR);
+
+	// parse file given by string name
+	mpc_result_t r;
+	if (!mpc_parse_contents(a->cells[0]->val.str, Lispy, &r)) {
+		char *err_msg = mpc_err_string(r.error);
+		mpc_err_delete(r.error);
+		lval *err = lval_err("Could not load library %s", err_msg);
+		free(err_msg);
+		lval_del(a);
+		return err;
+	}
+
+	// read contents
+	lval *expr = lval_read(r.output);
+	mpc_ast_delete(r.output);
+
+	// evaluate each expression
+	while(expr->count) {
+		lval *x = lval_eval(e, lval_pop(expr, 0));
+
+		// if evaluation produces error, print the error
+		if (x->type == LVAL_ERR) { lval_print(x); }
+		lval_del(x);
+	}
+
+	// delete expressions and arguments
+	lval_del(expr);
+	lval_del(a);
+
+	// return empty list
+	return lval_sexpr();
+}
+
 int
 lval_eq(lval *x, lval *y) {
 	// different types never equal
@@ -1130,23 +1177,25 @@ builtin_var(lenv *e, lval *a, char *func) {
 
 int
 main(int argc, char** argv) {
-	mpc_parser_t *Number = mpc_new("number");
-	mpc_parser_t *Symbol = mpc_new("symbol");
-	mpc_parser_t *String = mpc_new("string");
-	mpc_parser_t *Sexpr = mpc_new("sexpr");
-	mpc_parser_t *Qexpr = mpc_new("qexpr");
-	mpc_parser_t *Expr = mpc_new("expr");
-	mpc_parser_t *Lispy = mpc_new("lispy");
+	Number = mpc_new("number");
+	Symbol = mpc_new("symbol");
+	String = mpc_new("string");
+	Comment = mpc_new("comment");
+	Sexpr = mpc_new("sexpr");
+	Qexpr = mpc_new("qexpr");
+	Expr = mpc_new("expr");
+	Lispy = mpc_new("lispy");
 
 	mpca_lang(MPCA_LANG_DEFAULT,
 		"                                                    \
-			number : /-?[0-9]+(\\.[0-9]+)?/ ;                  \
-			symbol : /[a-zA-Z0-9_+\\-*\\/%\\\\=<>!&]+/ ;       \
-			string : /\"(\\\\.|[^\"])*\"/ ;                    \
-			sexpr  : '(' <expr>* ')' ;                         \
-			qexpr  : '{' <expr>* '}' ;                         \
-			expr   : <number> | <symbol> | <sexpr> | <qexpr>;  \
-			lispy  : /^/ <expr>* /$/ ;                         \
+			number  : /-?[0-9]+(\\.[0-9]+)?/ ;                 \
+			symbol  : /[a-zA-Z0-9_+\\-*\\/%\\\\=<>!&]+/ ;      \
+			string  : /\"(\\\\.|[^\"])*\"/ ;                   \
+			comment : /;[^\\r\\n]*/                            \
+			sexpr   : '(' <expr>* ')' ;                        \
+			qexpr   : '{' <expr>* '}' ;                        \
+			expr    : <number> | <symbol> | <sexpr> | <qexpr>; \
+			lispy   : /^/ <expr>* /$/ ;                        \
 		",
 		Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
@@ -1178,6 +1227,7 @@ main(int argc, char** argv) {
 
  lenv_del(e);
 
- mpc_cleanup(7, Number, Symbol, String, Sexpr, Qexpr, Expr, Lispy);
+ mpc_cleanup(8, Number, Symbol, String,
+ 	Comment, Sexpr, Qexpr, Expr, Lispy);
  return 0;
 }

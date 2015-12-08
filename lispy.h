@@ -48,6 +48,7 @@ lval *builtin_var(lenv *, lval *, char *);
 lval *builtin_op(lenv *, lval *, char*);
 lval *builtin_ord(lenv *, lval *, char *);
 lval *builtin_cmp(lenv *, lval *, char *);
+lval *builtin_load(lenv *, lval *);
 
 void lval_del(lval *);
 void lval_expr_print(lval *, char, char);
